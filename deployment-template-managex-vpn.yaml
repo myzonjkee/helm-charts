@@ -1,0 +1,406 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.appName }}
+  namespace: {{ .Chart.Name }}
+spec:
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels:
+      app: {{ .Values.appName }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.appName }}
+    spec:
+      tolerations:
+        - key: CriticalAddonsOnly
+          operator: Exists
+        - key: kubernetes.azure.com/scalesetpriority
+          operator: Exists
+      nodeSelector:
+        agentpool: {{ .Values.nodePool }}
+      dnsConfig:
+        searches:
+          - {{ .Values.hostName }}
+      containers:
+        - name: next
+          image: codegarten-fff5gyfuhxddhfhu.azurecr.io/managex-next:{{ .Chart.AppVersion }}
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3000
+          env:
+            - name: APP_VERSION
+              value: {{ .Chart.AppVersion }}
+            - name: NEXTAUTH_URL
+              value: https://{{ .Values.hostName }}/login
+            - name: STRAPI_BASE_URL
+              value: 127.0.0.1:1337
+            - name: NEXT_PUBLIC_STRAPI_JWT_EXPIRES_SEC
+              value: "600"
+            - name: NEXTAUTH_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: nextauth-secret
+                  key: NEXTAUTH_SECRET
+            - name: NEXT_PUBLIC_MUI_X_LICENSE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: next-public-mui-x-license-key
+                  key: NEXT_PUBLIC_MUI_X_LICENSE_KEY
+            - name: NEXT_STRAPI_FULL_ACCESS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: next-strapi-full-access-token
+                  key: NEXT_STRAPI_FULL_ACCESS_TOKEN
+          volumeMounts:
+            - name: {{ .Values.appName }}-secrets-store
+              mountPath: /mnt/secrets-store
+              readOnly: true
+            - name: {{ .Values.appName }}-codegarten-secrets-store
+              mountPath: /mnt/codegarten-secrets-store
+              readOnly: true
+        - name: strapi
+          image: codegarten-fff5gyfuhxddhfhu.azurecr.io/managex-strapi:{{ .Chart.AppVersion }}
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 1337
+          env:
+            - name: HOST
+              value: 0.0.0.0
+            - name: PORT
+              value: "1337"
+            - name: NODE_TLS_REJECT_UNAUTHORIZED
+              value: "0"
+            - name: STRAPI_BASE_URL
+              value: 127.0.0.1:1337
+            - name: APP_KEYS
+              valueFrom:
+                secretKeyRef:
+                  name: app-keys
+                  key: APP_KEYS
+            - name: API_TOKEN_SALT
+              valueFrom:
+                secretKeyRef:
+                  name: api-token-salt
+                  key: API_TOKEN_SALT
+            - name: ADMIN_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: admin-jwt-secret
+                  key: ADMIN_JWT_SECRET
+            - name: TRANSFER_TOKEN_SALT
+              valueFrom:
+                secretKeyRef:
+                  name: transfer-token-salt
+                  key: TRANSFER_TOKEN_SALT
+            - name: DATABASE_CLIENT
+              value: postgres
+            - name: DATABASE_HOST
+              value: {{ .Values.databaseHost }}
+            - name: DATABASE_PORT
+              value: "{{ .Values.databasePort }}"
+            - name: DATABASE_NAME
+              value: {{ .Values.databaseName }}
+            - name: DATABASE_USERNAME
+              value: {{ .Values.databaseUsername }}
+            - name: DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: database-password
+                  key: DATABASE_PASSWORD
+            - name: DATABASE_SSL
+              value: "true"
+            - name: MAIL_HOST
+              value: {{ .Values.mailHost }}
+            - name: MAIL_PORT
+              value: {{ .Values.mailPort }}
+            - name: MAIL_USERNAME
+              value: {{ .Values.mailUsername }}
+            - name: MAIL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mail-password
+                  key: MAIL_PASSWORD
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: jwt-secret
+                  key: JWT_SECRET
+            - name: JWT_SECRET_EXPIRES
+              value: "600" # 10 min in seconds
+            - name: REFRESH_TOKEN_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: refresh-token-secret
+                  key: REFRESH_TOKEN_SECRET
+            - name: REFRESH_TOKEN_EXPIRES
+              value: "21600" # 6 hours in seconds
+            - name: TZ
+              value: UTC
+            - name: STRAPI_TELEMETRY_DISABLED
+              value: "true"
+          volumeMounts:
+            - name: {{ .Values.appName }}-secrets-store
+              mountPath: /mnt/secrets-store
+              readOnly: true
+            - name: {{ .Values.appName }}-strapi-uploads
+              mountPath: /opt/app/public/uploads
+        - name: nginx
+          image: nginx:latest
+          ports:
+            - containerPort: 443
+            - containerPort: 80
+          volumeMounts:
+            - name: {{ .Values.appName }}-nginx-config
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
+            - name: tls-certs
+              mountPath: /etc/nginx/tls
+              readOnly: true
+      volumes:
+        - name: {{ .Values.appName }}-nginx-config
+          configMap:
+            name: {{ .Values.appName }}-nginx-config
+        - name: tls-certs
+          secret:
+            secretName: self-signed-tls
+        - name: {{ .Values.appName }}-secrets-store
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: {{ .Values.appName }}-key-vault
+        - name: {{ .Values.appName }}-codegarten-secrets-store
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: {{ .Values.appName }}-codegarten-key-vault
+        - name: {{ .Values.appName }}-strapi-uploads
+          persistentVolumeClaim:
+            claimName: {{ .Values.appName }}-azure-file
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  namespace: {{ .Chart.Name }}
+  name: {{ .Values.appName }}-nginx-config
+  labels:
+    app: {{ .Values.appName }}
+data:
+  nginx.conf: |
+    events {}
+    http {
+      server {
+        listen 80;
+        server_name {{ .Values.hostName }};
+        return 301 https://$host$request_uri;
+      }
+      server {
+        listen 443 ssl;
+        server_name {{ .Values.hostName }};
+        ssl_certificate /etc/nginx/tls/tls.crt;
+        ssl_certificate_key /etc/nginx/tls/tls.key;
+        location / {
+          proxy_set_header Host $http_host;
+          proxy_http_version 1.1;
+          proxy_set_header Upgrade $http_upgrade;
+          proxy_set_header Connection "Upgrade";
+          proxy_set_header X-Real-IP $remote_addr;
+          proxy_pass http://127.0.0.1:3000;
+        }
+        location /cms/ {
+          rewrite ^/cms/?(.*)$ /$1 break;
+          proxy_pass http://127.0.0.1:1337;
+          proxy_http_version 1.1;
+          proxy_set_header X-Forwarded-Host $host;
+          proxy_set_header X-Forwarded-Server $host;
+          proxy_set_header X-Real-IP $remote_addr;
+          proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+          proxy_set_header X-Forwarded-Proto $scheme;
+          proxy_set_header Host $http_host;
+          proxy_set_header Upgrade $http_upgrade;
+          proxy_set_header Connection "Upgrade";
+          proxy_pass_request_headers on;
+        }
+      }
+    }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: {{ .Chart.Name }}
+  name: {{ .Values.appName }}-service
+  annotations:
+    service.beta.kubernetes.io/azure-load-balancer-internal: "true" # Should be quoted
+    external-dns.alpha.kubernetes.io/hostname: {{ .Values.hostName }}
+spec:
+  type: LoadBalancer
+  selector:
+    app: {{ .Values.appName }}
+  ports:
+    - name: https
+      protocol: TCP
+      port: 443
+      targetPort: 443
+    - name: http
+      protocol: TCP
+      port: 80
+      targetPort: 80
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  namespace: {{ .Chart.Name }}
+  name: {{ .Values.appName }}-self-signed-issuer
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  namespace: {{ .Chart.Name }}
+  name: {{ .Values.appName }}-self-signed-cert
+spec:
+  secretName: self-signed-tls
+  issuerRef:
+    name: {{ .Values.appName }}-self-signed-issuer
+  commonName: {{ .Values.hostName }}
+  dnsNames:
+    - {{ .Values.hostName }}
+---
+apiVersion: secrets-store.csi.x-k8s.io/v1
+kind: SecretProviderClass
+metadata:
+  namespace: {{ .Chart.Name }}
+  name: {{ .Values.appName }}-key-vault
+spec:
+  provider: azure
+  parameters:
+    usePodIdentity: "false" # Should be quoted
+    useVMManagedIdentity: "true" # Should be quoted
+    tenantId: {{ .Values.tenantId }}
+    keyvaultName: {{ .Values.keyVault }}
+    userAssignedIdentityID: {{ .Values.managedIdentityId }}
+    objects: |
+      array:
+        - |
+          objectName: {{ .Values.appName }}-next-auth-secret
+          objectType: secret
+        - |
+          objectName: {{ .Values.appName }}-next-strapi-full-access-token
+          objectType: secret
+        - |
+          objectName: {{ .Values.appName }}-strapi-transfer-token-salt
+          objectType: secret
+        - |
+          objectName: {{ .Values.appName }}-strapi-jwt-secret
+          objectType: secret
+        - |
+          objectName: {{ .Values.appName }}-strapi-admin-jwt-secret
+          objectType: secret
+        - |
+          objectName: {{ .Values.appName }}-strapi-api-token-salt
+          objectType: secret
+        - |
+          objectName: {{ .Values.appName }}-strapi-app-keys
+          objectType: secret
+        - |
+          objectName: {{ .Values.appName }}-strapi-refresh-token-secret
+          objectType: secret
+        - |
+          objectName: {{ .Values.appName }}-strapi-database-password
+          objectType: secret
+        - |
+          objectName: {{ .Values.appName }}-strapi-mail-password
+          objectType: secret
+  secretObjects:
+    - secretName: nextauth-secret
+      type: Opaque
+      data:
+        - objectName: {{ .Values.appName }}-next-auth-secret
+          key: NEXTAUTH_SECRET
+    - secretName: next-strapi-full-access-token
+      type: Opaque
+      data:
+        - objectName: {{ .Values.appName }}-next-strapi-full-access-token
+          key: NEXT_STRAPI_FULL_ACCESS_TOKEN
+    - secretName: jwt-secret
+      type: Opaque
+      data:
+        - objectName: {{ .Values.appName }}-strapi-jwt-secret
+          key: JWT_SECRET
+    - secretName: transfer-token-salt
+      type: Opaque
+      data:
+        - objectName: {{ .Values.appName }}-strapi-transfer-token-salt
+          key: TRANSFER_TOKEN_SALT
+    - secretName: admin-jwt-secret
+      type: Opaque
+      data:
+        - objectName: {{ .Values.appName }}-strapi-admin-jwt-secret
+          key: ADMIN_JWT_SECRET
+    - secretName: api-token-salt
+      type: Opaque
+      data:
+        - objectName: {{ .Values.appName }}-strapi-api-token-salt
+          key: API_TOKEN_SALT
+    - secretName: app-keys
+      type: Opaque
+      data:
+        - objectName: {{ .Values.appName }}-strapi-app-keys
+          key: APP_KEYS
+    - secretName: refresh-token-secret
+      type: Opaque
+      data:
+        - objectName: {{ .Values.appName }}-strapi-refresh-token-secret
+          key: REFRESH_TOKEN_SECRET
+    - secretName: database-password
+      type: Opaque
+      data:
+        - objectName: {{ .Values.appName }}-strapi-database-password
+          key: DATABASE_PASSWORD
+    - secretName: mail-password
+      type: Opaque
+      data:
+        - objectName: {{ .Values.appName }}-strapi-mail-password
+          key: MAIL_PASSWORD
+---
+apiVersion: secrets-store.csi.x-k8s.io/v1
+kind: SecretProviderClass
+metadata:
+  namespace: {{ .Chart.Name }}
+  name: {{ .Values.appName }}-codegarten-key-vault
+spec:
+  provider: azure
+  parameters:
+    usePodIdentity: "false" # Should be quoted
+    useVMManagedIdentity: "true" # Should be quoted
+    keyvaultName: codegarten-key-vault
+    tenantId: {{ .Values.tenantId }}
+    userAssignedIdentityID: {{ .Values.managedIdentityId }}
+    objects: |
+      array:
+        - |
+          objectName: mui-license-key
+          objectType: secret
+  secretObjects:
+    - secretName: next-public-mui-x-license-key
+      type: Opaque
+      data:
+        - objectName: mui-license-key
+          key: NEXT_PUBLIC_MUI_X_LICENSE_KEY
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  namespace: {{ .Chart.Name }}
+  name: {{ .Values.appName }}-azure-file
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: azurefile-csi
+  resources:
+    requests:
+      storage: {{ .Values.storage }}
