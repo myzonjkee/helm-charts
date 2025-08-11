@@ -1,13 +1,16 @@
 #!/bin/bash
 
 # Prerequisites:
-# 2.  Change variables in this file
-# 3.  Run this script sh ./create-tenant-managex.sh
+# 1.  Change variables in this file
+# 2.  Run this script sh ./create-tenant-managex.sh
 
 # VARIABLES YOU CAN CHANGE
+ENV=prod
 COMPANY=
 HOST_NAME=
 PRIVATE_DNS_ZONE=
+# Pick IP from 10.224.0.0/16 range
+LOAD_BALANCER_IP=
 
 NODE_POOL=mainpool
 LOCATION=polandcentral
@@ -20,7 +23,7 @@ MAIL_PASSWORD=
 
 # DO NOT CHANGE ANYTHING BELOW
 TENANT=tenant-$COMPANY
-APP_NAME=$TENANT-managex
+APP_NAME=$TENANT-managex-$ENV
 SUBSCRIPTION=codegarten-subscription
 KEY_VAULT=$TENANT-kv
 RESOURCE_GROUP=$TENANT-resource-group
@@ -37,8 +40,8 @@ PG_PORT=5432
 PG_DATABASE=postgres
 PG_PASSWORD="$(az keyvault secret show --vault-name codegarten-key-vault --name codegarten-postgres-admin --query value -o tsv)"
 
-PG_NEW_DB_NAME=$TENANT-managex
-PG_NEW_DB_USER_NAME=$TENANT-managex
+PG_NEW_DB_NAME=$TENANT-managex-$ENV
+PG_NEW_DB_USER_NAME=$TENANT-managex-$ENV
 PG_NEW_DB_USER_PASSWORD=$(openssl rand -hex 6)
 
 ORIGINAL_SUBSCRIPTION=$(az account show --query id -o tsv)
@@ -289,7 +292,7 @@ psql "host=$PG_HOST port=$PG_PORT dbname=$PG_NEW_DB_NAME user=$PG_USER sslmode=r
   > /dev/null
 
 echo "13/14 - Creating helm chart..."
-HELM_APP="prod-$COMPANY"
+HELM_APP="$TENANT-$ENV"
 helm create "$HELM_APP"
 rm -rf ./$HELM_APP/charts
 rm -rf ./$HELM_APP/.helmignore
@@ -302,6 +305,7 @@ hostName: $HOST_NAME
 replicas: 1
 storage: 1Gi
 nodePool: $NODE_POOL
+loadBalancerIP: $LOAD_BALANCER_IP
 
 # Identity and security
 keyVault: $KEY_VAULT

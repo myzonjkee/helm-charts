@@ -3,7 +3,7 @@
 `helm install <namespace> <namespace> -n <namespace>`
 
 Example:
-`helm install prod-omegadent ./prod-omegadent -n prod-omegadent`
+`helm install tenant-omegadent-prod ./tenant-omegadent-prod -n tenant-omegadent-prod`
 
 ### Upgrade an existing release
 
@@ -15,4 +15,4 @@ Example:
 
 ### Uninstall (delete) a release
 
-`helm uninstall <namespace>`
+`helm uninstall <namespace> -n <namespace>`

@@ -71,13 +71,14 @@ kubectl delete namespace "$HELM_APP"
 
 echo "4/5 - Deleting database and its user..."
 psql "host=$PG_HOST port=$PG_PORT dbname=$PG_DATABASE user=$PG_USER sslmode=require" \
-  -c "DROP DATABASE \"$TENANT-managex\";" \
+  -c "DROP DATABASE \"$TENANT-managex-prod\";" \
   > /dev/null
 psql "host=$PG_HOST port=$PG_PORT dbname=$PG_DATABASE user=$PG_USER sslmode=require" \
-  -c "DROP USER \"$TENANT-managex\";" \
+  -c "DROP USER \"$TENANT-managex-prod\";" \
   > /dev/null
 
 echo "5/5 - Deleting helm chart..."
 rm -rf ./$HELM_APP
 
 echo "All steps completed successfully!"
+
