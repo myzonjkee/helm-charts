@@ -1,13 +1,16 @@
 #!/bin/bash
 
 # Prerequisites:
-# 2.  Change variables in this file
-# 3.  Run this script sh ./create-tenant-managex.sh
+# 1.  Change variables in this file
+# 2.  Run this script sh ./create-tenant-managex.sh
 
 # VARIABLES YOU CAN CHANGE
+ENV=prod
 COMPANY=
 HOST_NAME=
 PRIVATE_DNS_ZONE=
+# Pick IP from 10.224.0.0/16 range
+LOAD_BALANCER_IP=
 
 NODE_POOL=mainpool
 LOCATION=polandcentral
@@ -19,8 +22,9 @@ MAIL_USERNAME=
 MAIL_PASSWORD=
 
 # DO NOT CHANGE ANYTHING BELOW
+APP_NAME=managex-$ENV
 TENANT=tenant-$COMPANY
-APP_NAME=$TENANT-managex
+APP_NAME=$TENANT-$APP_NAME
 SUBSCRIPTION=codegarten-subscription
 KEY_VAULT=$TENANT-kv
 RESOURCE_GROUP=$TENANT-resource-group
@@ -37,8 +41,8 @@ PG_PORT=5432
 PG_DATABASE=postgres
 PG_PASSWORD="$(az keyvault secret show --vault-name codegarten-key-vault --name codegarten-postgres-admin --query value -o tsv)"
 
-PG_NEW_DB_NAME=$TENANT-managex
-PG_NEW_DB_USER_NAME=$TENANT-managex
+PG_NEW_DB_NAME=$TENANT-managex-$ENV
+PG_NEW_DB_USER_NAME=$TENANT-managex-$ENV
 PG_NEW_DB_USER_PASSWORD=$(openssl rand -hex 6)
 
 ORIGINAL_SUBSCRIPTION=$(az account show --query id -o tsv)
@@ -208,6 +212,13 @@ az keyvault secret set \
   --name "$APP_NAME-strapi-super-admin-password" \
   --tags $TAGS \
   > /dev/null
+az keyvault secret set \
+  --vault-name $KEY_VAULT \
+  --content-type "password" \
+  --value support@codegarten.com \
+  --name "$APP_NAME-strapi-super-admin-email" \
+  --tags $TAGS \
+  > /dev/null
 
 echo "11/14 - Generating secrets to key vault..."
 az keyvault secret set \
@@ -289,19 +300,22 @@ psql "host=$PG_HOST port=$PG_PORT dbname=$PG_NEW_DB_NAME user=$PG_USER sslmode=r
   > /dev/null
 
 echo "13/14 - Creating helm chart..."
-HELM_APP="prod-$COMPANY"
-helm create "$HELM_APP"
-rm -rf ./$HELM_APP/charts
-rm -rf ./$HELM_APP/.helmignore
-rm -rf ./$HELM_APP/templates/*
-sed -i "" "s/^appVersion: .*/appVersion: \"$APP_VERSION\"/" ./$HELM_APP/Chart.yaml
-cat > "./$HELM_APP/values.yaml" <<EOL
+mkdir "$TENANT"
+cd "./$TENANT"
+helm create "$APP_NAME"
+rm -rf ./$APP_NAME/charts
+rm -rf ./$APP_NAME/.helmignore
+rm -rf ./$APP_NAME/templates/*
+sed -i "" "s/^appVersion: .*/appVersion: \"$APP_VERSION\"/" ./$APP_NAME/Chart.yaml
+cat > "./$APP_NAME/values.yaml" <<EOL
 # General application settings
+namespace: $TENANT
 appName: $APP_NAME
 hostName: $HOST_NAME
 replicas: 1
 storage: 1Gi
 nodePool: $NODE_POOL
+loadBalancerIP: $LOAD_BALANCER_IP
 
 # Identity and security
 keyVault: $KEY_VAULT
@@ -319,11 +333,11 @@ mailHost: $MAIL_HOST
 mailPort: $MAIL_PORT
 mailUsername: $MAIL_USERNAME
 EOL
-cp "./deployment-template-managex-vpn.yaml" "./$HELM_APP/templates/deployment.yaml"
+cp "../deployment-template-managex-vpn.yaml" "./$APP_NAME/templates/deployment.yaml"
 
 echo "14/14 - Installing ManageX..."
-kubectl create namespace "$HELM_APP"
-helm install "$HELM_APP" "./$HELM_APP" --namespace "$HELM_APP"
+kubectl create namespace "$TENANT"
+helm install "$APP_NAME" "./$APP_NAME" --namespace "$TENANT"
 
 echo "All steps completed successfully!"
 
