@@ -1,18 +1,12 @@
 ### Install a new release
-
-`helm install <namespace> <namespace> -n <namespace>`
-
-Example:
-`helm install tenant-omegadent-prod ./tenant-omegadent-prod -n tenant-omegadent-prod`
+`helm install <chart_name> <chart_folder> -n <namespace>`
 
 ### Upgrade an existing release
-
-`helm upgrade <namespace> <chart-directory> -n <namespace>`
+`helm upgrade <chart_name> <chart_folder> -n <namespace>`
+helm upgrade managex-prod ./tenant-omegadent/managex-prod -n tenant-omegadent
 
 ### See what will be applied (dry run)
-
-`helm install <namespace> <chart-directory> --dry-run --debug`
+`helm install <chart_name> <chart_folder> --dry-run --debug`
 
 ### Uninstall (delete) a release
-
-`helm uninstall <namespace> -n <namespace>`
+`helm uninstall <chart_name> -n <namespace>`
