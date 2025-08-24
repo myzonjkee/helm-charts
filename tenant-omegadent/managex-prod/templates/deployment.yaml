@@ -192,16 +192,55 @@ data:
   nginx.conf: |
     events {}
     http {
+      limit_req_zone $binary_remote_addr zone=api:20m rate=5r/s;
       server {
         listen 80;
         server_name {{ .Values.hostName }};
         return 301 https://$host$request_uri;
       }
       server {
+        types {
+          application/javascript js;
+          text/html html htm;
+          text/css css;
+          image/svg+xml svg;
+          image/png png;
+        }
+
         listen 443 ssl;
         server_name {{ .Values.hostName }};
         ssl_certificate /etc/nginx/tls/tls.crt;
         ssl_certificate_key /etc/nginx/tls/tls.key;
+
+        # Only allow browser to render the page inside an frame or iframe with the same origin.
+        add_header X-Frame-Options SAMEORIGIN;
+
+        #Wwhen serving user-supplied content, include a X-Content-Type-Options: nosniff header along with the Content-Type: header,
+        # to disable content-type sniffing on some browsers.
+        add_header X-Content-Type-Options nosniff;
+
+        # This header enables the Cross-site scripting (XSS) filter built into most recent web browsers.
+        add_header X-XSS-Protection "1; mode=block";
+
+        # Config to enable HSTS(HTTP Strict Transport Security)
+        add_header Strict-Transport-Security "max-age=31536000; includeSubdomains;";
+
+        # HTTP response header to controls DNS prefetching
+        add_header X-DNS-Prefetch-Control off;
+
+        # Config for cache control header
+        add_header Cache-Control "no-cache, must-revalidate";
+
+        # With Content Security Policy you can tell the browser that it can only download content from the domains you explicitly allow
+        add_header Content-Security-Policy "
+          default-src 'self';
+          script-src 'self' 'unsafe-inline' 'unsafe-eval' https://maps.googleapis.com;
+          style-src 'self' 'unsafe-inline';
+          img-src 'self' data: blob: https://flagcdn.com;
+          frame-src 'self';
+          connect-src 'self' data: blob: wss: https://maps.googleapis.com https://cdnjs.cloudflare.com;
+        ";
+
         location / {
           proxy_set_header Host $http_host;
           proxy_http_version 1.1;
@@ -224,6 +263,19 @@ data:
           proxy_set_header Connection "Upgrade";
           proxy_pass_request_headers on;
         }
+
+        # Enables or disables gzipping of responses.
+        gzip on;
+        # Enables or disables inserting the “Vary: Accept-Encoding” response header field
+        gzip_vary on;
+        # Enables or disables gzipping of responses for proxied requests depending on the request and response.
+        gzip_proxied any;
+        # Sets a gzip compression level of a response. Acceptable values are in the range from 1 to 9.
+        gzip_comp_level 5;
+        # Sets the minimum HTTP version of a request required to compress a response.
+        gzip_http_version 1.1;
+        # Enables gzipping of responses for the specified MIME types in addition to “text/html”.
+        gzip_types text/plain text/css application/json application/x-javascript text/xml application/xml application/xml+rss text/javascript application/javascript;
       }
     }
 ---

@@ -179,6 +179,9 @@ psql "host=$PG_HOST port=$PG_PORT dbname=$PG_NEW_DB_NAME user=$PG_USER sslmode=r
 psql "host=$PG_HOST port=$PG_PORT dbname=$PG_NEW_DB_NAME user=$PG_USER sslmode=require" \
   -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO \"$PG_NEW_DB_USER_NAME\";" \
   > /dev/null
+psql "host=$PG_HOST port=$PG_PORT dbname=$PG_NEW_DB_NAME user=$PG_USER sslmode=require" \
+  -c "REASSIGN OWNED BY $PG_USER TO \"$PG_NEW_DB_USER_NAME\";" \
+  > /dev/null
 
 echo "9/14 - Saving user's password in the key vault..."
 for i in {1..30}; do
