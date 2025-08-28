@@ -345,3 +345,7 @@ helm install "$APP_NAME" "./$APP_NAME" --namespace "$TENANT"
 echo "All steps completed successfully!"
 
 echo "Visit https://$HOST_NAME. Sometimes it can take few minutes to get ready."
+
+# Next steps?
+# Create sub-net, VM with OpenVPN server
+# Add database to pwsh pg-backup script

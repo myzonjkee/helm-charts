@@ -82,3 +82,5 @@ rm -rf ./$HELM_APP
 
 echo "All steps completed successfully!"
 
+# Next steps?
+# Remove database from pwsh pg-backup script?
