@@ -1,0 +1,24 @@
+# General application settings
+namespace: tenant-omegadent
+appName: web-dev
+hostName: dev.omega-dent.cz
+replicas: 1
+storage: 1Gi
+nodePool: mainpool
+loadBalancerIP:
+
+# Identity and security
+keyVault: tenant-omegadent-kv
+tenantId: a6d7dd13-7033-47e2-b1af-7ebfd6f69e1a
+managedIdentityId: c9704c86-3cc5-4442-bcc7-eb2aeaf8aae5
+
+# Database configuration
+databaseHost: codegarten-postgres-server.postgres.database.azure.com
+databasePort: 5432
+databaseName: tenant-omegadent-web-dev
+databaseUsername: tenant-omegadent-web-dev
+
+# Mail server configuration
+mailHost:
+mailPort:
+mailUsername:

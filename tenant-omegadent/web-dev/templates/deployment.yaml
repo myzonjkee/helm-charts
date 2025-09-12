@@ -1,0 +1,422 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.appName }}
+  namespace: {{ .Values.namespace }}
+spec:
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels:
+      app: {{ .Values.appName }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.appName }}
+    spec:
+      tolerations:
+        - key: CriticalAddonsOnly
+          operator: Exists
+        - key: kubernetes.azure.com/scalesetpriority
+          operator: Exists
+      nodeSelector:
+        agentpool: {{ .Values.nodePool }}
+      dnsConfig:
+        nameservers:
+          - 168.63.129.16
+      containers:
+        - name: next
+          image: codegarten-fff5gyfuhxddhfhu.azurecr.io/omegadent-web-next:{{ .Chart.AppVersion }}
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3000
+          env:
+            - name: APP_VERSION
+              value: {{ .Chart.AppVersion }}
+            - name: NEXTAUTH_URL
+              value: https://{{ .Values.hostName }}/login
+            - name: STRAPI_BASE_URL
+              value: 127.0.0.1:1337
+            - name: NEXT_PUBLIC_STRAPI_JWT_EXPIRES_SEC
+              value: "600"
+            - name: NEXTAUTH_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.appName }}-nextauth-secret
+                  key: NEXTAUTH_SECRET
+            - name: NEXT_STRAPI_FULL_ACCESS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.appName }}-next-strapi-full-access-token
+                  key: NEXT_STRAPI_FULL_ACCESS_TOKEN
+          volumeMounts:
+            - name: {{ .Values.appName }}-secrets-store
+              mountPath: /mnt/secrets-store
+              readOnly: true
+            - name: {{ .Values.appName }}-strapi-uploads
+              mountPath: /app/public/uploads
+        - name: strapi
+          image: codegarten-fff5gyfuhxddhfhu.azurecr.io/omegadent-web-strapi:{{ .Chart.AppVersion }}
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 1337
+          env:
+            - name: HOST
+              value: 0.0.0.0
+            - name: PORT
+              value: "1337"
+            - name: NODE_TLS_REJECT_UNAUTHORIZED
+              value: "0"
+            - name: STRAPI_BASE_URL
+              value: 127.0.0.1:1337
+            - name: APP_KEYS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.appName }}-app-keys
+                  key: APP_KEYS
+            - name: API_TOKEN_SALT
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.appName }}-api-token-salt
+                  key: API_TOKEN_SALT
+            - name: ADMIN_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.appName }}-admin-jwt-secret
+                  key: ADMIN_JWT_SECRET
+            - name: TRANSFER_TOKEN_SALT
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.appName }}-transfer-token-salt
+                  key: TRANSFER_TOKEN_SALT
+            - name: DATABASE_CLIENT
+              value: postgres
+            - name: DATABASE_HOST
+              value: {{ .Values.databaseHost }}
+            - name: DATABASE_PORT
+              value: "{{ .Values.databasePort }}"
+            - name: DATABASE_NAME
+              value: {{ .Values.databaseName }}
+            - name: DATABASE_USERNAME
+              value: {{ .Values.databaseUsername }}
+            - name: DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.appName }}-database-password
+                  key: DATABASE_PASSWORD
+            - name: DATABASE_SSL
+              value: "true"
+            - name: MAIL_HOST
+              value: {{ .Values.mailHost }}
+            - name: MAIL_PORT
+              value: {{ .Values.mailPort }}
+            - name: MAIL_USERNAME
+              value: {{ .Values.mailUsername }}
+            - name: MAIL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.appName }}-mail-password
+                  key: MAIL_PASSWORD
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.appName }}-jwt-secret
+                  key: JWT_SECRET
+            - name: JWT_SECRET_EXPIRES
+              value: "600" # 10 min in seconds
+            - name: REFRESH_TOKEN_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.appName }}-refresh-token-secret
+                  key: REFRESH_TOKEN_SECRET
+            - name: REFRESH_TOKEN_EXPIRES
+              value: "21600" # 6 hours in seconds
+            - name: TZ
+              value: UTC
+            - name: STRAPI_TELEMETRY_DISABLED
+              value: "true"
+          volumeMounts:
+            - name: {{ .Values.appName }}-secrets-store
+              mountPath: /mnt/secrets-store
+              readOnly: true
+            - name: {{ .Values.appName }}-strapi-uploads
+              mountPath: /opt/app/public/uploads
+        - name: nginx
+          image: nginx:latest
+          ports:
+            - containerPort: 443
+            - containerPort: 80
+          volumeMounts:
+            - name: {{ .Values.appName }}-nginx-config
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
+            - name: tls-certs
+              mountPath: /etc/nginx/tls
+              readOnly: true
+      volumes:
+        - name: {{ .Values.appName }}-nginx-config
+          configMap:
+            name: {{ .Values.appName }}-nginx-config
+        - name: tls-certs
+          secret:
+            secretName: self-signed-tls
+        - name: {{ .Values.appName }}-secrets-store
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: {{ .Values.appName }}-key-vault
+        - name: {{ .Values.appName }}-strapi-uploads
+          persistentVolumeClaim:
+            claimName: {{ .Values.appName }}-azure-file
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  namespace: {{ .Values.namespace }}
+  name: {{ .Values.appName }}-nginx-config
+  labels:
+    app: {{ .Values.appName }}
+data:
+  nginx.conf: |
+    events {}
+    http {
+      limit_req_zone $binary_remote_addr zone=api:20m rate=5r/s;
+      server {
+        listen 80;
+        server_name {{ .Values.hostName }};
+        return 301 https://$host$request_uri;
+      }
+      server {
+        types {
+          application/javascript js;
+          text/html html htm;
+          text/css css;
+          image/svg+xml svg;
+          image/png png;
+        }
+
+        listen 443 ssl;
+        server_name {{ .Values.hostName }};
+        ssl_certificate /etc/nginx/tls/tls.crt;
+        ssl_certificate_key /etc/nginx/tls/tls.key;
+
+        # Only allow browser to render the page inside an frame or iframe with the same origin.
+        add_header X-Frame-Options SAMEORIGIN;
+
+        #Wwhen serving user-supplied content, include a X-Content-Type-Options: nosniff header along with the Content-Type: header,
+        # to disable content-type sniffing on some browsers.
+        add_header X-Content-Type-Options nosniff;
+
+        # This header enables the Cross-site scripting (XSS) filter built into most recent web browsers.
+        add_header X-XSS-Protection "1; mode=block";
+
+        # Config to enable HSTS(HTTP Strict Transport Security)
+        add_header Strict-Transport-Security "max-age=31536000; includeSubdomains;";
+
+        # HTTP response header to controls DNS prefetching
+        add_header X-DNS-Prefetch-Control off;
+
+        # Config for cache control header
+        add_header Cache-Control "no-cache, must-revalidate";
+
+        # With Content Security Policy you can tell the browser that it can only download content from the domains you explicitly allow
+        add_header Content-Security-Policy "
+          default-src 'self';
+          script-src 'self' 'unsafe-inline' 'unsafe-eval' https://maps.googleapis.com;
+          style-src 'self' 'unsafe-inline';
+          img-src 'self' data: blob: https://flagcdn.com;
+          frame-src 'self';
+          connect-src 'self' data: blob: wss: https://maps.googleapis.com https://cdnjs.cloudflare.com;
+        ";
+
+        location / {
+          proxy_set_header Host $http_host;
+          proxy_http_version 1.1;
+          proxy_set_header Upgrade $http_upgrade;
+          proxy_set_header Connection "Upgrade";
+          proxy_set_header X-Real-IP $remote_addr;
+          proxy_pass http://127.0.0.1:3000;
+        }
+        location /cms/ {
+          rewrite ^/cms/?(.*)$ /$1 break;
+          proxy_pass http://127.0.0.1:1337;
+          proxy_http_version 1.1;
+          proxy_set_header X-Forwarded-Host $host;
+          proxy_set_header X-Forwarded-Server $host;
+          proxy_set_header X-Real-IP $remote_addr;
+          proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+          proxy_set_header X-Forwarded-Proto $scheme;
+          proxy_set_header Host $http_host;
+          proxy_set_header Upgrade $http_upgrade;
+          proxy_set_header Connection "Upgrade";
+          proxy_pass_request_headers on;
+        }
+
+        # Enables or disables gzipping of responses.
+        gzip on;
+        # Enables or disables inserting the “Vary: Accept-Encoding” response header field
+        gzip_vary on;
+        # Enables or disables gzipping of responses for proxied requests depending on the request and response.
+        gzip_proxied any;
+        # Sets a gzip compression level of a response. Acceptable values are in the range from 1 to 9.
+        gzip_comp_level 5;
+        # Sets the minimum HTTP version of a request required to compress a response.
+        gzip_http_version 1.1;
+        # Enables gzipping of responses for the specified MIME types in addition to “text/html”.
+        gzip_types text/plain text/css application/json application/x-javascript text/xml application/xml application/xml+rss text/javascript application/javascript;
+      }
+    }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: {{ .Values.namespace }}
+  name: {{ .Values.appName }}-service
+  annotations:
+    service.beta.kubernetes.io/azure-load-balancer-internal: "true" # Should be quoted
+    external-dns.alpha.kubernetes.io/hostname: {{ .Values.hostName }}
+spec:
+  type: LoadBalancer
+  loadBalancerIP: {{ .Values.loadBalancerIP }}
+  selector:
+    app: {{ .Values.appName }}
+  ports:
+    - name: https
+      protocol: TCP
+      port: 443
+      targetPort: 443
+    - name: http
+      protocol: TCP
+      port: 80
+      targetPort: 80
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  namespace: {{ .Values.namespace }}
+  name: {{ .Values.appName }}-self-signed-issuer
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  namespace: {{ .Values.namespace }}
+  name: {{ .Values.appName }}-self-signed-cert
+spec:
+  secretName: self-signed-tls
+  issuerRef:
+    name: {{ .Values.appName }}-self-signed-issuer
+  commonName: {{ .Values.hostName }}
+  dnsNames:
+    - {{ .Values.hostName }}
+---
+apiVersion: secrets-store.csi.x-k8s.io/v1
+kind: SecretProviderClass
+metadata:
+  namespace: {{ .Values.namespace }}
+  name: {{ .Values.appName }}-key-vault
+spec:
+  provider: azure
+  parameters:
+    usePodIdentity: "false" # Should be quoted
+    useVMManagedIdentity: "true" # Should be quoted
+    tenantId: {{ .Values.tenantId }}
+    keyvaultName: {{ .Values.keyVault }}
+    userAssignedIdentityID: {{ .Values.managedIdentityId }}
+    objects: |
+      array:
+        - |
+          objectName: {{ .Values.appName }}-next-auth-secret
+          objectType: secret
+        - |
+          objectName: {{ .Values.appName }}-next-strapi-full-access-token
+          objectType: secret
+        - |
+          objectName: {{ .Values.appName }}-strapi-transfer-token-salt
+          objectType: secret
+        - |
+          objectName: {{ .Values.appName }}-strapi-jwt-secret
+          objectType: secret
+        - |
+          objectName: {{ .Values.appName }}-strapi-admin-jwt-secret
+          objectType: secret
+        - |
+          objectName: {{ .Values.appName }}-strapi-api-token-salt
+          objectType: secret
+        - |
+          objectName: {{ .Values.appName }}-strapi-app-keys
+          objectType: secret
+        - |
+          objectName: {{ .Values.appName }}-strapi-refresh-token-secret
+          objectType: secret
+        - |
+          objectName: {{ .Values.appName }}-strapi-database-password
+          objectType: secret
+        - |
+          objectName: {{ .Values.appName }}-strapi-mail-password
+          objectType: secret
+  secretObjects:
+    - secretName: {{ .Values.appName }}-nextauth-secret
+      type: Opaque
+      data:
+        - objectName: {{ .Values.appName }}-next-auth-secret
+          key: NEXTAUTH_SECRET
+    - secretName: {{ .Values.appName }}-next-strapi-full-access-token
+      type: Opaque
+      data:
+        - objectName: {{ .Values.appName }}-next-strapi-full-access-token
+          key: NEXT_STRAPI_FULL_ACCESS_TOKEN
+    - secretName: {{ .Values.appName }}-jwt-secret
+      type: Opaque
+      data:
+        - objectName: {{ .Values.appName }}-strapi-jwt-secret
+          key: JWT_SECRET
+    - secretName: {{ .Values.appName }}-transfer-token-salt
+      type: Opaque
+      data:
+        - objectName: {{ .Values.appName }}-strapi-transfer-token-salt
+          key: TRANSFER_TOKEN_SALT
+    - secretName: {{ .Values.appName }}-admin-jwt-secret
+      type: Opaque
+      data:
+        - objectName: {{ .Values.appName }}-strapi-admin-jwt-secret
+          key: ADMIN_JWT_SECRET
+    - secretName: {{ .Values.appName }}-api-token-salt
+      type: Opaque
+      data:
+        - objectName: {{ .Values.appName }}-strapi-api-token-salt
+          key: API_TOKEN_SALT
+    - secretName: {{ .Values.appName }}-app-keys
+      type: Opaque
+      data:
+        - objectName: {{ .Values.appName }}-strapi-app-keys
+          key: APP_KEYS
+    - secretName: {{ .Values.appName }}-refresh-token-secret
+      type: Opaque
+      data:
+        - objectName: {{ .Values.appName }}-strapi-refresh-token-secret
+          key: REFRESH_TOKEN_SECRET
+    - secretName: {{ .Values.appName }}-database-password
+      type: Opaque
+      data:
+        - objectName: {{ .Values.appName }}-strapi-database-password
+          key: DATABASE_PASSWORD
+    - secretName: {{ .Values.appName }}-mail-password
+      type: Opaque
+      data:
+        - objectName: {{ .Values.appName }}-strapi-mail-password
+          key: MAIL_PASSWORD
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  namespace: {{ .Values.namespace }}
+  name: {{ .Values.appName }}-azure-file
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: azurefile-csi
+  resources:
+    requests:
+      storage: {{ .Values.storage }}
