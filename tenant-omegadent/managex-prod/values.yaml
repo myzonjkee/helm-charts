@@ -3,7 +3,7 @@ namespace: tenant-omegadent
 appName: managex-prod
 hostName: managex.omega-dent.cz
 replicas: 1
-storage: 1Gi
+storage: 5Gi
 nodePool: mainpool
 loadBalancerIP: 10.224.0.10
 
