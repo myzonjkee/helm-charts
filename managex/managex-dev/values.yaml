@@ -8,7 +8,7 @@ storage: 1Gi
 nodePool: mainpool
 
 # Identity and security
-keyVault: tenant-omegadent-kv
+keyVault: codegarten-key-vault
 tenantId: a6d7dd13-7033-47e2-b1af-7ebfd6f69e1a
 managedIdentityId: c9704c86-3cc5-4442-bcc7-eb2aeaf8aae5
 
