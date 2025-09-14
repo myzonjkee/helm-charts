@@ -1,0 +1,181 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.appName }}
+  namespace: {{ .Values.namespace }}
+spec:
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels:
+      app: {{ .Values.appName }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.appName }}
+    spec:
+      tolerations:
+        - key: CriticalAddonsOnly
+          operator: Exists
+        - key: kubernetes.azure.com/scalesetpriority
+          operator: Exists
+      nodeSelector:
+        agentpool: {{ .Values.nodePool }}
+      dnsConfig:
+        nameservers:
+          - 168.63.129.16
+      initContainers:
+        - name: put-static-frontend
+          image: codegarten-fff5gyfuhxddhfhu.azurecr.io/managex-frontend:{{ .Chart.AppVersion }}
+          env:
+            - name: TARGET_DIR
+              value: /frontend
+          volumeMounts:
+            - name: frontend
+              mountPath: /frontend
+        - name: put-static-frontend-tablet
+          image: codegarten-fff5gyfuhxddhfhu.azurecr.io/managex-frontend-tablet:{{ .Chart.AppVersion }}
+          env:
+            - name: TARGET_DIR
+              value: /frontend-tablet
+          volumeMounts:
+            - name: frontend-tablet
+              mountPath: /frontend-tablet
+      containers:
+        - name: nginx
+          image: nginx:1.29-alpine
+          ports:
+            - containerPort: 80
+          volumeMounts:
+            - name: frontend
+              mountPath: /var/www/frontend/static
+            - name: frontend-tablet
+              mountPath: /var/www/frontend-tablet/static
+            - name: {{ .Values.appName }}-nginx-config
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
+      volumes:
+        - name: frontend
+          emptyDir: {}
+        - name: frontend-tablet
+          emptyDir: {}
+        - name: {{ .Values.appName }}-nginx-config
+          configMap:
+            name: {{ .Values.appName }}-nginx-config
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  namespace: {{ .Values.namespace }}
+  name: {{ .Values.appName }}-nginx-config
+  labels:
+    app: {{ .Values.appName }}
+data:
+  nginx.conf: |
+    events {}
+    http {
+      server {
+        types {
+          application/javascript js;
+          text/html html htm;
+          text/css css;
+          image/svg+xml svg;
+          image/png png;
+        }
+        listen 80;
+        server_name {{ .Values.hostName }};
+        location / {
+          root /var/www/frontend/static;
+          index index.html;
+          try_files $uri /index.html;
+        }
+      }
+      server {
+        types {
+          application/javascript js;
+          text/html html htm;
+          text/css css;
+          image/svg+xml svg;
+          image/png png;
+        }
+        listen 80;
+        server_name {{ .Values.tabletHostName }};
+        location / {
+          root /var/www/frontend-tablet/static;
+          index index.html;
+          try_files $uri /index.html;
+        }
+      }
+    }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: {{ .Values.namespace }}
+  name: {{ .Values.appName }}-service
+spec:
+  type: ClusterIP
+  selector:
+    app: {{ .Values.appName }}
+  ports:
+    - name: http
+      protocol: TCP
+      port: 80
+      targetPort: 80
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  namespace: {{ .Values.namespace }}
+  name: {{ .Values.appName }}-ingress
+  annotations:
+    cert-manager.io/issuer: {{ .Values.appName }}-self-signed-issuer
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - {{ .Values.hostName }}
+        - {{ .Values.tabletHostName }}
+      secretName: self-signed-tls
+  rules:
+    - host: {{ .Values.hostName }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Values.appName }}-service
+                port:
+                  number: 80
+    - host: {{ .Values.tabletHostName }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Values.appName }}-service
+                port:
+                  number: 80
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  namespace: {{ .Values.namespace }}
+  name: {{ .Values.appName }}-self-signed-issuer
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  namespace: {{ .Values.namespace }}
+  name: {{ .Values.appName }}-self-signed-cert
+spec:
+  secretName: self-signed-tls
+  issuerRef:
+    name: {{ .Values.appName }}-self-signed-issuer
+  # commonName: {{ .Values.hostName }}
+  dnsNames:
+    - {{ .Values.hostName }}
+    - {{ .Values.tabletHostName }}
