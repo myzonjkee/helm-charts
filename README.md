@@ -3,6 +3,7 @@
 
 ### Upgrade an existing release
 `helm upgrade <chart_name> <chart_folder> -n <namespace>`
+helm upgrade managex-dev ./managex/managex-dev -n managex
 helm upgrade managex-prod ./tenant-omegadent/managex-prod -n tenant-omegadent
 
 ### See what will be applied (dry run)

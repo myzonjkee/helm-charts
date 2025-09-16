@@ -243,7 +243,7 @@ metadata:
   annotations:
     cert-manager.io/issuer: {{ .Values.appName }}-self-signed-issuer
 spec:
-  ingressClassName: nginx
+  ingressClassName: private-nginx
   tls:
     - hosts:
         - {{ .Values.hostName }}
