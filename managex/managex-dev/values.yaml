@@ -19,6 +19,8 @@ databaseName: managex-dev
 databaseUsername: managex-dev
 
 # Mail server configuration
-mailHost:
-mailPort:
-mailUsername:
+smtpHost: mail.omega-dent.cz
+smtpPort: 587
+smtpUsername: no-reply@omega-dent.cz
+mailFrom: no-reply@omega-dent.cz
+mailReplyTo: no-reply@omega-dent.cz

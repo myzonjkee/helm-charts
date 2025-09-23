@@ -23,6 +23,7 @@ spec:
       initContainers:
         - name: put-static-frontend
           image: codegarten-fff5gyfuhxddhfhu.azurecr.io/managex-frontend:{{ .Chart.AppVersion }}
+          imagePullPolicy: Always
           env:
             - name: TARGET_DIR
               value: /frontend
@@ -31,6 +32,7 @@ spec:
               mountPath: /frontend
         - name: put-static-frontend-tablet
           image: codegarten-fff5gyfuhxddhfhu.azurecr.io/managex-frontend-tablet:{{ .Chart.AppVersion }}
+          imagePullPolicy: Always
           env:
             - name: TARGET_DIR
               value: /frontend-tablet
@@ -89,17 +91,21 @@ spec:
                   key: DATABASE_PASSWORD
             - name: DATABASE_SSL
               value: "true"
-            - name: MAIL_HOST
-              value: {{ .Values.mailHost }}
-            - name: MAIL_PORT
-              value: {{ .Values.mailPort }}
-            - name: MAIL_USERNAME
-              value: {{ .Values.mailUsername }}
-            - name: MAIL_PASSWORD
+            - name: SMTP_HOST
+              value: {{ .Values.smtpHost }}
+            - name: SMTP_PORT
+              value: "{{ .Values.smtpPort }}"
+            - name: SMTP_USERNAME
+              value: {{ .Values.smtpUsername }}
+            - name: SMTP_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: mail-password
-                  key: MAIL_PASSWORD
+                  key: SMTP_PASSWORD
+            - name: MAIL_FROM
+              value: {{ .Values.mailFrom }}
+            - name: MAIL_REPLY_TO
+              value: {{ .Values.mailReplyTo }}
             - name: JWT_SECRET
               valueFrom:
                 secretKeyRef:
@@ -371,7 +377,7 @@ spec:
       type: Opaque
       data:
         - objectName: {{ .Values.appName }}-strapi-mail-password
-          key: MAIL_PASSWORD
+          key: SMTP_PASSWORD
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
