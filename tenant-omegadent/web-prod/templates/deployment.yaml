@@ -203,6 +203,8 @@ kind: Service
 metadata:
   namespace: {{ .Values.namespace }}
   name: {{ .Values.appName }}-service
+  annotations:
+    service.beta.kubernetes.io/azure-load-balancer-health-probe-protocol: "tcp"
 spec:
   type: ClusterIP
   selector:
