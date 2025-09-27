@@ -27,6 +27,12 @@ spec:
           env:
             - name: TARGET_DIR
               value: /frontend
+            - name: VITE_APP_NAME
+              value: DEV ManageX
+            - name: VITE_STRAPI_JWT_SECRET_EXPIRES
+              value: "600" # 10 min in seconds
+            - name: VITE_STRAPI_REFRESH_TOKEN_EXPIRES
+              value: "21600" # 6 hours in seconds
           volumeMounts:
             - name: frontend
               mountPath: /frontend
@@ -231,6 +237,8 @@ kind: Service
 metadata:
   namespace: {{ .Values.namespace }}
   name: {{ .Values.appName }}-service
+  annotations:
+    service.beta.kubernetes.io/azure-load-balancer-health-probe-protocol: "tcp"
 spec:
   type: ClusterIP
   selector:
