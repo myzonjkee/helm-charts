@@ -33,6 +33,8 @@ spec:
               value: https://{{ .Values.hostName }}/login
             - name: STRAPI_BASE_URL
               value: 127.0.0.1:1337
+            - name: NEXT_PUBLIC_ORIGIN
+              value: https://{{ .Values.hostName }}
             - name: NEXT_PUBLIC_STRAPI_JWT_EXPIRES_SEC
               value: "600"
             - name: NEXTAUTH_SECRET
@@ -45,6 +47,13 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.appName }}-next-strapi-full-access-token
                   key: NEXT_STRAPI_FULL_ACCESS_TOKEN
+            - name: TELEGRAM_BOT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.appName }}-next-telegram-bot-token
+                  key: TELEGRAM_BOT_TOKEN
+            - name: TELEGRAM_ADMIN_CHAT_IDS
+              value: {{ .Values.telegramAdminChatIds }}
           volumeMounts:
             - name: {{ .Values.appName }}-secrets-store
               mountPath: /mnt/secrets-store
@@ -292,6 +301,9 @@ spec:
           objectName: {{ .Values.appName }}-next-strapi-full-access-token
           objectType: secret
         - |
+          objectName: {{ .Values.appName }}-next-telegram-bot-token
+          objectType: secret
+        - |
           objectName: {{ .Values.appName }}-strapi-transfer-token-salt
           objectType: secret
         - |
@@ -326,6 +338,11 @@ spec:
       data:
         - objectName: {{ .Values.appName }}-next-strapi-full-access-token
           key: NEXT_STRAPI_FULL_ACCESS_TOKEN
+    - secretName: {{ .Values.appName }}-next-telegram-bot-token
+      type: Opaque
+      data:
+        - objectName: {{ .Values.appName }}-next-telegram-bot-token
+          key: TELEGRAM_BOT_TOKEN
     - secretName: {{ .Values.appName }}-jwt-secret
       type: Opaque
       data:

@@ -18,6 +18,8 @@ databasePort: 5432
 databaseName: tenant-omegadent-web-prod
 databaseUsername: tenant-omegadent-web-prod
 
+telegramAdminChatIds: 822101595,855229776,1793416308
+
 # Mail server configuration
 mailHost:
 mailPort:
