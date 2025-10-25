@@ -232,11 +232,14 @@ metadata:
   annotations:
     cert-manager.io/issuer: {{ .Values.appName }}-letsencrypt-issuer
     nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/from-to-www-redirect: "true"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
 spec:
   ingressClassName: nginx
   tls:
     - hosts:
         - {{ .Values.hostName }}
+        - www.{{ .Values.hostName }}
       secretName: letsencrypt-tls
   rules:
     - host: {{ .Values.hostName }}
@@ -278,6 +281,7 @@ spec:
   commonName: {{ .Values.hostName }}
   dnsNames:
     - {{ .Values.hostName }}
+    - www.{{ .Values.hostName }}
 ---
 apiVersion: secrets-store.csi.x-k8s.io/v1
 kind: SecretProviderClass
